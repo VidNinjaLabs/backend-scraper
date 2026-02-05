@@ -9,12 +9,13 @@ import { z } from "zod";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
+// @ts-ignore
 import {
   makeProviders,
   makeStandardFetcher,
   makeProxiedFetcher,
   targets,
-} from "./src/provider/index";
+} from "./lib/index.umd.cjs";
 
 dotenv.config();
 
@@ -146,7 +147,7 @@ async function handleScrape(media: any, req: any, reply: any) {
       "Available Sources:",
       providers
         .listSources()
-        .map((s) => s.id)
+        .map((s: any) => s.id)
         .join(", "),
     );
     console.log("Scrape Context:", JSON.stringify(context, null, 2));
@@ -205,7 +206,7 @@ app.get("/providers", async (req, reply) => {
     externalSources: "all",
   });
 
-  const sources = providers.listSources().map((s) => ({
+  const sources = providers.listSources().map((s: any) => ({
     id: s.id,
     name: s.name || s.id,
     rank: s.rank,

@@ -8,4 +8,5 @@
 .env.local.example
 .env.production.example
 .env.development.example
-.env
+.
+src/provider

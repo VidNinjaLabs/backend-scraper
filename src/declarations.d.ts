@@ -1,4 +1,6 @@
 declare module "*/lib/index.umd.cjs" {
-  const content: any;
-  export = content;
+  export const makeProviders: any;
+  export const makeStandardFetcher: any;
+  export const makeProxiedFetcher: any;
+  export const targets: any;
 }

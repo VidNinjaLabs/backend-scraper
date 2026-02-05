@@ -36,7 +36,11 @@ const app = fastify.withTypeProvider<ZodTypeProvider>();
 // Middleware to check API_SECRET (or JWT in future)
 app.addHook("preHandler", async (request, reply) => {
   // Skip auth for public endpoints
-  if (request.url === "/auth/session" || request.url === "/health") {
+  if (
+    request.url === "/auth/session" ||
+    request.url === "/health" ||
+    request.url === "/"
+  ) {
     return;
   }
 
@@ -237,6 +241,10 @@ app.get("/media/show/:tmdbId/:season/:episode", async (req: any, reply) => {
 
 app.get("/health", async (req, reply) => {
   return { status: "ok", timestamp: new Date().toISOString() };
+});
+
+app.get("/", async (req, reply) => {
+  return { status: "ok", service: "VidNinja Scraper" };
 });
 
 app.post("/auth/session", async (req, reply) => {

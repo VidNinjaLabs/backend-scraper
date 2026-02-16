@@ -29,7 +29,7 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 # Copy built artifacts and dependencies
 COPY --from=builder /app/package.json /app/pnpm-lock.yaml ./
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/lib ./lib
+COPY --from=builder /app/lib ./dist/lib
 COPY --from=builder /app/node_modules ./node_modules
 
 # Expose port

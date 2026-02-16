@@ -4,4 +4,10 @@
 .env.production
 .env.development
 .env.test
-src/provider
+.env.example
+.env.local.example
+.env.production.example
+.env.development.example
+.env
+/dist
+/lib

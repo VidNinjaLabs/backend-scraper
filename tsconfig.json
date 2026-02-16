@@ -8,7 +8,9 @@
     "forceConsistentCasingInFileNames": true,
     "strict": true,
     "skipLibCheck": true,
-    "paths": {}
+    "paths": {
+      "@/*": ["./src/provider/*"]
+    }
   },
-  "include": ["server.ts", "src/**/*"]
+  "include": ["server.ts", "src/**/*", "lib/**/*"]
 }

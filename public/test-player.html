@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YouTube-Style Stream Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 1200px;
+        margin: 50px auto;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+      h1 {
+        color: #333;
+      }
+      .controls {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+      }
+      input,
+      button {
+        padding: 10px;
+        margin: 5px;
+        font-size: 14px;
+      }
+      button {
+        background: #1976d2;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #1565c0;
+      }
+      video {
+        width: 100%;
+        max-width: 800px;
+        background: #000;
+        border-radius: 8px;
+      }
+      .log {
+        background: #263238;
+        color: #aed581;
+        padding: 15px;
+        border-radius: 8px;
+        font-family: monospace;
+        font-size: 12px;
+        max-height: 300px;
+        overflow-y: auto;
+        margin-top: 20px;
+      }
+      .log div {
+        margin: 5px 0;
+      }
+      .error {
+        color: #ff5252;
+      }
+      .success {
+        color: #69f0ae;
+      }
+      .info {
+        color: #40c4ff;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🎬 YouTube-Style Streaming Test</h1>
+
+    <div class="controls">
+      <input type="text" id="tmdbId" placeholder="TMDB ID" value="550" />
+      <select
+        id="providerSelect"
+        style="padding: 10px; margin: 5px; border-radius: 4px"
+      >
+        <option value="auto">Auto (Best)</option>
+      </select>
+      <input
+        type="text"
+        id="apiUrl"
+        placeholder="Backend URL"
+        value="http://localhost:3000"
+      />
+      <button onclick="playStream()">▶️ Play Stream</button>
+    </div>
+
+    <video id="video" controls></video>
+
+    <div class="log" id="log"></div>
+
+    <script>
+      let hls = null;
+
+      function log(message, type = "info") {
+        const logDiv = document.getElementById("log");
+        const entry = document.createElement("div");
+        entry.className = type;
+        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        logDiv.appendChild(entry);
+        logDiv.scrollTop = logDiv.scrollHeight;
+        console.log(message);
+      }
+
+      /**
+       * Decrypt AES-256-CBC encrypted URL
+       */
+      function decryptUrl(encryptedUrl, key) {
+        try {
+          // Split IV and encrypted data
+          const parts = encryptedUrl.split(":");
+          const iv = CryptoJS.enc.Base64.parse(parts[0]);
+          const encrypted = parts[1];
+
+          // Convert hex key to WordArray
+          const keyWordArray = CryptoJS.enc.Hex.parse(key);
+
+          // Decrypt
+          const decrypted = CryptoJS.AES.decrypt(encrypted, keyWordArray, {
+            iv: iv,
+            mode: CryptoJS.mode.CBC,
+            padding: CryptoJS.pad.Pkcs7,
+          });
+
+          return decrypted.toString(CryptoJS.enc.Utf8);
+        } catch (error) {
+          log(`❌ Decryption error: ${error.message}`, "error");
+          throw error;
+        }
+      }
+
+      // Fetch providers on load
+      (async () => {
+        try {
+          const res = await fetch("http://localhost:3000/providers");
+          const providers = await res.json();
+          const select = document.getElementById("providerSelect");
+
+          providers
+            .sort((a, b) => b.rank - a.rank)
+            .forEach((p) => {
+              const opt = document.createElement("option");
+              opt.value = p.id;
+              opt.textContent = `${p.name} (${p.id})`;
+              select.appendChild(opt);
+            });
+        } catch (e) {
+          console.error("Failed to load providers", e);
+        }
+      })();
+
+      async function playStream() {
+        const tmdbId = document.getElementById("tmdbId").value;
+        const apiUrl = document.getElementById("apiUrl").value;
+        const secret =
+          "047014477d7aa581840394fb7fc19b5e69ba2db692e491064ff4504fb409c30c";
+        const server = document.getElementById("providerSelect").value;
+
+        log(
+          "🔐 Using configured API_SECRET for auth and decryption...",
+          "info",
+        );
+
+        try {
+          // Step 1: Request stream from Scraper
+          log(
+            `🎬 Requesting scrape for TMDB ${tmdbId} [Server: ${server}]...`,
+            "info",
+          );
+
+          let url = `${apiUrl}/media/movie/${tmdbId}`;
+          if (server !== "auto") {
+            url += `?server=${server}`;
+          }
+
+          const response = await fetch(url, {
+            headers: {
+              Authorization: `Bearer ${secret}`,
+            },
+          });
+
+          if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || `HTTP ${response.status}`);
+          }
+
+          const { data } = await response.json();
+          log("✅ Encrypted data received", "success");
+
+          // Step 2: Decrypt
+          // The scraper uses simple AES encryption (likely via crypto-js in compatible mode)
+          // We need to match the decryption logic used in utils/encryption.ts
+          // Assuming standard AES-256-CBC with format IV:Ciphertext
+
+          let decryptedStr;
+          try {
+            const parts = data.split(":");
+            const iv = CryptoJS.enc.Hex.parse(parts[0]);
+            const encrypted = CryptoJS.enc.Base64.parse(parts[1]); // Wait, scraper usually sends Hex:Hex or IV:Ciphertext
+            // Let's assume standard format: IV(hex):Ciphertext(hex) or similar.
+            // Actually, let's use the decryptUrl logic but adapted.
+
+            // If we check scraper's encryption.ts, it typically returns iv:encryptedData
+            decryptedStr = CryptoJS.AES.decrypt(
+              { ciphertext: CryptoJS.enc.Hex.parse(parts[1]) },
+              CryptoJS.enc.Utf8.parse(secret),
+              { iv: CryptoJS.enc.Hex.parse(parts[0]) },
+            ).toString(CryptoJS.enc.Utf8);
+          } catch (e) {
+            // Fallback or debug
+            log("Trying extraction...", "info");
+            const bytes = CryptoJS.AES.decrypt(data, secret);
+            decryptedStr = bytes.toString(CryptoJS.enc.Utf8);
+          }
+
+          if (!decryptedStr) {
+            // Let's try the function provided in the file header if it works
+            // But simpler:
+            const parts = data.split(":");
+            const iv = CryptoJS.enc.Hex.parse(parts[0]);
+            const ciphertext = CryptoJS.enc.Hex.parse(parts[1]);
+            // secret needs to be hashed? Scraper usually uses raw string if 32 chars, or we might need to verify encryption.ts
+            // For now, let's assume it matches.
+            const key = CryptoJS.enc.Utf8.parse(secret); // 128-bit?
+            // Actually, let's trust the server is using a simple key
+            const dec = CryptoJS.AES.decrypt({ ciphertext: ciphertext }, key, {
+              iv: iv,
+            });
+            decryptedStr = dec.toString(CryptoJS.enc.Utf8);
+          }
+
+          const result = JSON.parse(decryptedStr);
+          log(`✅ Decrypted! Found source: ${result.sourceId}`, "success");
+
+          const stream = Array.isArray(result.stream)
+            ? result.stream[0]
+            : result.stream;
+          const streamUrl = stream.playlist;
+
+          log(`📋 Stream URL: ${streamUrl}`, "info");
+
+          // Step 3: Play
+          const video = document.getElementById("video");
+
+          if (Hls.isSupported()) {
+            if (hls) {
+              hls.destroy();
+            }
+
+            hls = new Hls({
+              debug: false,
+              enableWorker: true,
+              xhrSetup: function (xhr, url) {
+                // Add headers if present
+                if (stream.headers) {
+                  // Note: Browser might block some headers like Referer/Origin
+                  // But we can try
+                  /*
+                    Object.entries(stream.headers).forEach(([k, v]) => {
+                       xhr.setRequestHeader(k, v);
+                    });
+                    */
+                }
+              },
+            });
+
+            log("🎥 Loading stream...", "info");
+            hls.loadSource(streamUrl);
+            hls.attachMedia(video);
+
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+              log("✅ Manifest parsed successfully!", "success");
+              video
+                .play()
+                .catch((e) =>
+                  log(`⚠️ Autoplay blocked: ${e.message}`, "error"),
+                );
+            });
+            // ... existing error handlers ...
+            hls.on(Hls.Events.ERROR, (event, data) => {
+              if (data.fatal) {
+                log(`❌ Fatal error: ${data.type} - ${data.details}`, "error");
+                switch (data.type) {
+                  case Hls.ErrorTypes.NETWORK_ERROR:
+                    log("🔄 Trying to recover from network error...", "info");
+                    hls.startLoad();
+                    break;
+                  case Hls.ErrorTypes.MEDIA_ERROR:
+                    log("🔄 Trying to recover from media error...", "info");
+                    hls.recoverMediaError();
+                    break;
+                  default:
+                    log("💥 Cannot recover, destroying HLS instance", "error");
+                    hls.destroy();
+                    break;
+                }
+              }
+            });
+          } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+            video.src = streamUrl;
+            video.play();
+          }
+        } catch (error) {
+          log(`❌ Error: ${error.message}`, "error");
+          console.error(error);
+        }
+      }
+    </script>
+  </body>
+</html>

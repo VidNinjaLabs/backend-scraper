@@ -9,13 +9,15 @@ import { z } from "zod";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
-// @ts-ignore
 import {
   makeProviders,
   makeStandardFetcher,
   makeProxiedFetcher,
   targets,
-} from "./lib/index.umd.cjs";
+} from "./lib/index";
+
+import path from "path";
+import fastifyStatic from "@fastify/static";
 
 dotenv.config();
 
@@ -24,9 +26,21 @@ const fastify = Fastify({
 });
 
 fastify.register(cors, {
-  origin: true, // Allow all origins (reflects request origin)
+  origin: true,
   credentials: true,
 });
+
+if (process.env.NODE_ENV !== "production") {
+  fastify.register(fastifyStatic, {
+    root: path.join(__dirname, "public"),
+    prefix: "/public/",
+  });
+
+  // Dev only: Test Player
+  fastify.get("/test", async (req, reply) => {
+    return reply.sendFile("test-player.html");
+  });
+}
 
 fastify.setValidatorCompiler(validatorCompiler);
 fastify.setSerializerCompiler(serializerCompiler);
@@ -39,7 +53,9 @@ app.addHook("preHandler", async (request, reply) => {
   if (
     request.url === "/auth/session" ||
     request.url === "/health" ||
-    request.url === "/"
+    request.url === "/test" ||
+    request.url === "/providers" ||
+    request.url.startsWith("/public/")
   ) {
     return;
   }
@@ -53,13 +69,13 @@ app.addHook("preHandler", async (request, reply) => {
 
   // Real JWT verification
   try {
-    if (!process.env.API_SECRET) throw new Error("API_SECRET not set");
+    const secret = process.env.API_SECRET || "dev-secret-123";
 
     // For initial testing, we accept simple secret matching OR jwt
     // In prod, strictly require JWT
-    if (token === process.env.API_SECRET) return;
+    if (token === secret) return;
 
-    // jwt.verify(token, process.env.API_SECRET);
+    // jwt.verify(token, secret);
   } catch (err) {
     return reply.status(401).send({ error: "Invalid Token" });
   }
@@ -74,10 +90,12 @@ const scrapeSchema = z.object({
     releaseYear: z.number().optional(),
     title: z.string().optional(),
     imdbId: z.string().optional(),
+    server: z.string().optional(),
   }),
 });
 
 import { encrypt } from "./utils/encryption";
+import { fetchSubtitles } from "./src/provider/utils/subtitles";
 import nodeFetch from "node-fetch";
 
 const consistentUserAgent =
@@ -154,15 +172,43 @@ async function handleScrape(media: any, req: any, reply: any) {
         .map((s: any) => s.id)
         .join(", "),
     );
-    console.log("Scrape Context:", JSON.stringify(context, null, 2));
 
-    const output = await providers.runAll(context);
+    let output: any;
 
-    console.log("Raw Output:", JSON.stringify(output, null, 2));
+    if (media.server) {
+      console.log(`[Server] specific provider requested: ${media.server}`);
+      try {
+        const stream = await providers.runSourceScraper({
+          id: media.server,
+          media: context.media,
+        });
+        output = {
+          stream,
+          sourceId: media.server,
+        };
+      } catch (error) {
+        console.error(`[Server] Failed to run source ${media.server}:`, error);
+        output = null;
+      }
+    } else {
+      output = await providers.runAll(context);
+    }
 
     if (output?.stream) {
       console.log("Stream Found:", output.stream.id);
       console.log("Type:", output.stream.type);
+      // Debug: Log full stream details for debugging Koyeb vs Local differences
+      const streams = Array.isArray(output.stream)
+        ? output.stream
+        : [output.stream];
+      streams.forEach((s: any, i: number) => {
+        console.log(`[DEBUG] Stream ${i}:`, {
+          type: s.type,
+          playlist: s.playlist?.substring(0, 100) + "...",
+          hasHeaders: !!s.headers,
+          headerKeys: s.headers ? Object.keys(s.headers) : [],
+        });
+      });
     } else {
       console.log("Output has no streams.");
     }
@@ -183,8 +229,26 @@ async function handleScrape(media: any, req: any, reply: any) {
       ? output.stream
       : [output.stream];
 
+    // Fetch subtitles (only if streams found, or maybe always? Let's do always for now)
+    let subtitles: any[] = [];
+    try {
+      console.log("[Subtitles] Fetching for:", media.tmdbId);
+      subtitles = await fetchSubtitles({
+        tmdbId: media.tmdbId,
+        season: media.season?.number,
+        episode: media.episode?.number,
+      });
+      console.log(`[Subtitles] Found ${subtitles.length} subtitles`);
+    } catch (err: any) {
+      console.warn("[Subtitles] Failed to fetch:", err.message);
+    }
+
     // Encrypt the response
-    const jsonString = JSON.stringify({ ...output, stream: responseStream });
+    const jsonString = JSON.stringify({
+      ...output,
+      stream: responseStream,
+      subtitles,
+    });
     const encryptedData = encrypt(
       jsonString,
       process.env.API_SECRET || "dev-secret-123",
@@ -221,30 +285,30 @@ app.get("/providers", async (req, reply) => {
 
 app.get("/media/movie/:tmdbId", async (req: any, reply) => {
   const { tmdbId } = req.params;
+  const { server } = req.query as any;
   const media = {
     tmdbId,
     type: "movie",
+    server,
   };
   return handleScrape(media, req, reply);
 });
 
 app.get("/media/show/:tmdbId/:season/:episode", async (req: any, reply) => {
   const { tmdbId, season, episode } = req.params;
+  const { server } = req.query as any;
   const media = {
     tmdbId,
     type: "show",
     season: { number: parseInt(season) },
     episode: { number: parseInt(episode) },
+    server,
   };
   return handleScrape(media, req, reply);
 });
 
 app.get("/health", async (req, reply) => {
   return { status: "ok", timestamp: new Date().toISOString() };
-});
-
-app.get("/", async (req, reply) => {
-  return { status: "ok", service: "VidNinja Scraper" };
 });
 
 app.post("/auth/session", async (req, reply) => {
@@ -284,8 +348,9 @@ app.post(
 
 const start = async () => {
   try {
-    const port = parseInt(process.env.PORT || "3000");
+    const port = parseInt(process.env.PORT || "3000", 10);
     await fastify.listen({ port, host: "0.0.0.0" });
+    console.log(`[Server] Listening on port ${port}`);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

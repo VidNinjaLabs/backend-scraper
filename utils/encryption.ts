@@ -5,7 +5,7 @@ const algorithm = "aes-256-gcm";
 export function encrypt(text: string, secret: string): string {
   // Hash the secret to ensure it's 32 bytes
   const key = crypto.createHash("sha256").update(secret).digest();
-  const iv = crypto.randomBytes(16);
+  const iv = crypto.randomBytes(12); // AES-GCM standard: 12 bytes (96-bit IV), compatible with Web Crypto API
 
   const cipher = crypto.createCipheriv(algorithm, key, iv);
 

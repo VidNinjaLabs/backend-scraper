@@ -14,7 +14,7 @@ import {
   makeStandardFetcher,
   makeProxiedFetcher,
   targets,
-} from "./lib/index";
+} from "./src/provider/index";
 
 import path from "path";
 import fs from "fs";
@@ -186,21 +186,32 @@ async function handleScrape(media: any, req: any, reply: any) {
 
     if (media.server) {
       console.log(`[Server] specific provider requested: ${media.server}`);
+      const targetProvider = providers.listSources().find((s:any) => s.name === media.server || s.id === media.server);
+      const actualServerId = targetProvider ? targetProvider.id : media.server;
+
       try {
         const stream = await providers.runSourceScraper({
-          id: media.server,
+          id: actualServerId,
           media: context.media,
         });
         output = {
           stream,
-          sourceId: media.server,
+          sourceId: media.server, // keep the masked ID in the output
         };
       } catch (error) {
-        console.error(`[Server] Failed to run source ${media.server}:`, error);
+        console.error(`[Server] Failed to run source ${actualServerId} (${media.server}):`, error);
         output = null;
       }
     } else {
       output = await providers.runAll(context);
+    }
+
+    // Mask the sourceId returned by runAll if it's the actual internal id
+    if (output && output.sourceId) {
+      const p = providers.listSources().find((s:any) => s.id === output.sourceId);
+      if (p && p.name) {
+        output.sourceId = p.name;
+      }
     }
 
     if (output?.stream) {
@@ -284,9 +295,8 @@ app.get("/providers", async (req, reply) => {
   });
 
   const sources = providers.listSources().map((s: any) => ({
-    id: s.id,
+    id: s.name || s.id,
     name: s.name || s.id,
-    rank: s.rank,
   }));
 
   return sources;

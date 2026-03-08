@@ -194,7 +194,8 @@ export async function runTopProvidersRace(
           stream: output.stream[0],
           embeds: [],
         };
-      } catch (error) {
+      } catch (error: any) {
+        console.error(`[ParallelRunner] Source ${source.id} failed:`, error?.message || error);
         ops.events?.update?.({
           id: source.id,
           percentage: 100,

@@ -98,7 +98,8 @@ export async function runAllProviders(list: ProviderList, ops: ProviderRunnerOpt
       if (!output || (!output.stream?.length && !output.embeds.length)) {
         throw new NotFoundError('No streams found');
       }
-    } catch (error) {
+    } catch (error: any) {
+      console.error(`[Runner] Source ${source.id} failed:`, error.message);
       const updateParams: UpdateEvent = {
         id: source.id,
         percentage: 100,
@@ -115,7 +116,10 @@ export async function runAllProviders(list: ProviderList, ops: ProviderRunnerOpt
     // return stream is there are any
     if (output.stream?.[0]) {
       const playableStream = await validatePlayableStream(output.stream[0], ops, source.id);
-      if (!playableStream) throw new NotFoundError('No streams found');
+      if (!playableStream) {
+        console.error(`[Runner] Source ${source.id} stream failed validation`);
+        throw new NotFoundError('No streams found');
+      }
 
       return {
         sourceId: source.id,

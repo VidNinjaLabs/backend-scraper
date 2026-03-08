@@ -4,7 +4,7 @@ import { Stream } from '@/providers/streams';
 import { IndividualEmbedRunnerOptions } from '@/runners/individualRunner';
 import { ProviderRunnerOptions } from '@/runners/runner';
 
-const SKIP_VALIDATION_CHECK_IDS = ['cloudnestra', 'vidrock', 'showbox', 'vidlink', 'lookmovie'];
+const SKIP_VALIDATION_CHECK_IDS = ['cloudnestra', 'vidrock', 'showbox', 'vidlink', 'lookmovie', 'videoeasy'];
 
 export function isValidStream(stream: Stream | undefined): boolean {
   if (!stream) return false;

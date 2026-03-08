@@ -17,9 +17,15 @@ import {
 } from "./lib/index";
 
 import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
 import fastifyStatic from "@fastify/static";
 
-dotenv.config();
+// Ensure .env is loaded strictly from the exact file location, handling dist/ vs root
+const envPath = fs.existsSync(path.join(__dirname, ".env"))
+  ? path.join(__dirname, ".env")
+  : path.join(__dirname, "..", ".env"); 
+dotenv.config({ path: envPath });
 
 const fastify = Fastify({
   logger: true,
@@ -73,9 +79,12 @@ app.addHook("preHandler", async (request, reply) => {
 
     // For initial testing, we accept simple secret matching OR jwt
     // In prod, strictly require JWT
-    if (token === secret) return;
+    if (token === secret) {
+        return;
+    }
 
-    // jwt.verify(token, secret);
+    // if neither matched:
+    return reply.status(401).send({ error: "Invalid Token" });
   } catch (err) {
     return reply.status(401).send({ error: "Invalid Token" });
   }

@@ -6,7 +6,7 @@
   "scripts": {
     "build": "pnpm run build:lib && pnpm run build:server",
     "build:lib": "vite build && node -e \"const fs=require('fs'); if(fs.existsSync('lib/index.d.mts.d.ts')) fs.renameSync('lib/index.d.mts.d.ts', 'lib/index.d.ts');\"",
-    "build:server": "tsc",
+    "build:server": "tsc && tsc-alias",
     "start": "node dist/server.js",
     "dev": "vite build && concurrently \"vite build --watch\" \"node --import tsx --watch server.ts\"",
     "cli": "vite-node ./src/provider/dev-cli/index.ts"
@@ -57,6 +57,7 @@
     "@types/node": "^25.0.10",
     "@types/spinnies": "^0.5.3",
     "concurrently": "^9.2.1",
+    "tsc-alias": "^1.8.16",
     "tsx": "^4.21.0",
     "typescript": "^5.7.3",
     "vite": "^5.4.11",
